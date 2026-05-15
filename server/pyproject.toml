@@ -1,0 +1,13 @@
+[project]
+name = "beer-spying-server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "eventemitter>=0.2.0",
+    "fastapi[standard]",
+    "matplotlib>=3.10.6",
+    "scipy>=1.16.2",
+    "uvicorn>=0.37.0",
+]

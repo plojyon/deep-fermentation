@@ -2,3 +2,5 @@ data/
 __pycache__/
 results/
 models/
+.venv/
+bruhica/
