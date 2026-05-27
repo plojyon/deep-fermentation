@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fire import Fire
 
-from detect import BubbleDetector
-from load import BubbleAnnotation, load_annotations, load_wav
-from plot import plot_annotations, plot_wav
-from sample import sample_training_data
+from src.detect import BubbleDetector
+from src.load import BubbleAnnotation, load_annotations, load_wav
+from src.plot import plot_annotations, plot_wav
+from src.sample import sample_training_data
 
 SAMPLE_RATE = 44100
 WINDOW_SIZE = 0.1  # seconds

@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from load import BubbleAnnotation
+from src.load import BubbleAnnotation
 
 
 def get_sample(data: np.ndarray, interval: BubbleAnnotation):

@@ -5,9 +5,9 @@ import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 from tqdm import tqdm
 
-from detectors.constant import ConstantDetector
-from detectors.random import RandomDetector
-from preprocessors.identity import IdentityPreprocessor
+from src.detectors.constant import ConstantDetector
+from src.detectors.random import RandomDetector
+from src.preprocessors.identity import IdentityPreprocessor
 
 
 class BubbleDetector:
