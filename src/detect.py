@@ -1,9 +1,4 @@
-from collections import defaultdict
-from typing import Optional
-
-import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
-from tqdm import tqdm
 
 from src.detectors.constant import ConstantDetector
 from src.detectors.random import RandomDetector
@@ -11,7 +6,7 @@ from src.preprocessors.identity import IdentityPreprocessor
 
 
 class BubbleDetector:
-    """A bubble detector superclass."""
+    """A bubble detector."""
 
     detectors = {
         "constant": ConstantDetector,
