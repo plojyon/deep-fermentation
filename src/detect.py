@@ -1,9 +1,11 @@
 from sklearn.metrics import precision_recall_fscore_support
+import joblib
 
 from src.detectors.constant import ConstantDetector
 from src.detectors.random import RandomDetector
 from src.detectors.random_forest import RandomForest
 from src.detectors.svm import SVMDetector
+from src.detectors.cnn import CNNDetector
 from src.preprocessors.identity import IdentityPreprocessor
 from src.preprocessors.stft import StftPreprocessor
 
@@ -16,6 +18,7 @@ class BubbleDetector:
         "random": RandomDetector,
         "svm": SVMDetector,
         "random_forest": RandomForest,
+        "cnn": CNNDetector,
     }
     preprocessors = {
         "identity": IdentityPreprocessor,
@@ -53,11 +56,7 @@ class BubbleDetector:
 
     def save(self, path: str):
         """Save the trained model to a file."""
-        if hasattr(self.model, "save"):
-            self.model.save(path)
-        else:
-            with open(path, "w") as f:
-                f.write("")
+        joblib.dump(self, path)
 
     def evaluate(self, data, positive_intervals, negative_intervals, to_stdout=True):
         """Evaluate the bubble detector on the test set."""

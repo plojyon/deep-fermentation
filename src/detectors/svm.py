@@ -2,7 +2,7 @@ import joblib
 import numpy as np
 from sklearn import svm
 
-from sample import get_sample
+from src.sample import get_sample
 
 
 class SVMDetector:

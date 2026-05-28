@@ -1,0 +1,256 @@
+import joblib
+import numpy as np
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+
+from src.sample import get_sample
+
+
+class CNNClassifier1D(nn.Module):
+    """Inner CNN model."""
+
+    def __init__(
+        self,
+        conv_channels: tuple[int, ...],
+        kernel_size: int,
+        hidden_dim: int,
+        dropout: float,
+    ):
+        super().__init__()
+
+        padding = kernel_size // 2
+        layers: list[nn.Module] = []
+        in_channels = 1
+        for out_channels in conv_channels:
+            layers.extend(
+                [
+                    nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
+                    nn.BatchNorm1d(out_channels),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                ]
+            )
+            in_channels = out_channels
+
+        self.features = nn.Sequential(*layers)
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_channels, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(x)
+        x = self.pool(x)
+        x = self.classifier(x)
+        return x.squeeze(-1)
+
+
+class CNNDetector:
+    """A bubble detector using a deep CNN."""
+
+    display_name: str = "CNN"
+
+    def __init__(
+        self,
+        conv_channels: tuple[int, ...] = (32, 64),
+        kernel_size: int = 7,
+        hidden_dim: int = 64,
+        dropout: float = 0.25,
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-4,
+        batch_size: int = 32,
+        epochs: int = 20,
+        device: str | None = None,
+        seed: int = 42,
+        normalize: bool = True,
+        balance_classes: bool = True,
+        verbose: bool = True,
+    ):
+        self.conv_channels = tuple(conv_channels)
+        self.kernel_size = kernel_size
+        self.hidden_dim = hidden_dim
+        self.dropout = dropout
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.seed = seed
+        self.normalize = normalize
+        self.balance_classes = balance_classes
+        self.verbose = verbose
+
+        self.model = CNNClassifier1D(
+            conv_channels=self.conv_channels,
+            kernel_size=self.kernel_size,
+            hidden_dim=self.hidden_dim,
+            dropout=self.dropout,
+        ).to(self.device)
+
+        self.mean_: float | None = None
+        self.std_: float | None = None
+
+    def _ensure_2d(self, data):
+        data = np.asarray(data, dtype=np.float32)
+        if data.ndim == 1:
+            data = np.expand_dims(data, axis=0)
+        return data
+
+    def _prepare_training_data(self, samples: list[np.ndarray]) -> np.ndarray:
+        return np.asarray([np.asarray(sample, dtype=np.float32).reshape(-1) for sample in samples])
+
+    def _normalize(self, samples: np.ndarray) -> np.ndarray:
+        if not self.normalize:
+            return samples
+
+        if self.mean_ is None or self.std_ is None:
+            raise RuntimeError("CNNDetector normalization parameters are not initialized")
+
+        return (samples - self.mean_) / self.std_
+
+    def _prepare_sample_tensor(self, sample: np.ndarray) -> torch.Tensor:
+        sample = np.asarray(sample, dtype=np.float32).reshape(-1)
+        if self.normalize:
+            if self.mean_ is None or self.std_ is None:
+                raise RuntimeError("CNNDetector normalization parameters are not initialized")
+            sample = (sample - self.mean_) / self.std_
+        return torch.from_numpy(sample).unsqueeze(0)
+
+    def train(self, data, positive_intervals, negative_intervals):
+        """Train the classifier."""
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
+        data = self._ensure_2d(data)
+
+        pos = []
+        neg = []
+
+        print(f"Processing sample of shape {data.shape} for CNN training.")
+        for interval in positive_intervals:
+            pos.append(get_sample(data, interval))
+        for interval in negative_intervals:
+            neg.append(get_sample(data, interval))
+
+        print(f"Collected {len(pos)} positive and {len(neg)} negative samples for CNN training.")
+        X_train = self._prepare_training_data(pos + neg)
+        y_train = np.array([1] * len(pos) + [0] * len(neg))
+
+        if self.normalize:
+            self.mean_ = float(X_train.mean())
+            self.std_ = float(X_train.std())
+            if self.std_ == 0:
+                self.std_ = 1.0
+            X_train = self._normalize(X_train)
+
+        print(
+            "Training CNN. Data shape:",
+            X_train.shape,
+            "Labels shape:",
+            y_train.shape,
+            "Sanity check: 2 =",
+            X_train.ndim,
+        )
+
+        inputs = torch.from_numpy(X_train).unsqueeze(1)
+        targets = torch.from_numpy(y_train.astype(np.float32))
+        dataset = TensorDataset(inputs, targets)
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+        optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+        )
+
+        pos_weight = None
+        if self.balance_classes and len(pos) > 0:
+            pos_weight_value = len(neg) / max(len(pos), 1)
+            pos_weight = torch.tensor([pos_weight_value], device=self.device)
+
+        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+
+        self.model.train()
+        for epoch in range(self.epochs):
+            epoch_loss = 0.0
+            correct = 0
+            total = 0
+
+            for batch_inputs, batch_targets in loader:
+                batch_inputs = batch_inputs.to(self.device)
+                batch_targets = batch_targets.to(self.device)
+
+                optimizer.zero_grad(set_to_none=True)
+                logits = self.model(batch_inputs)
+                loss = criterion(logits, batch_targets)
+                loss.backward()
+                optimizer.step()
+
+                epoch_loss += float(loss.item()) * batch_inputs.size(0)
+                predictions = (torch.sigmoid(logits) >= 0.5).float()
+                correct += int((predictions == batch_targets).sum().item())
+                total += batch_inputs.size(0)
+
+            if self.verbose:
+                print(
+                    f"Epoch {epoch + 1}/{self.epochs}: "
+                    f"loss={epoch_loss / max(total, 1):.4f}, "
+                    f"accuracy={correct / max(total, 1):.3f}"
+                )
+
+        print("CNN training completed.")
+
+    def evaluate(self, data, positive_intervals, negative_intervals, to_stdout=True):
+        """Evaluate the detector on a labeled interval set."""
+        labels = [1] * len(positive_intervals) + [0] * len(negative_intervals)
+        intervals = positive_intervals + negative_intervals
+        predictions = self.detect(data, intervals)
+
+        labels_array = np.array(labels)
+        predictions_array = np.array(predictions)
+
+        true_positive = int(np.sum((labels_array == 1) & (predictions_array == 1)))
+        false_positive = int(np.sum((labels_array == 0) & (predictions_array == 1)))
+        false_negative = int(np.sum((labels_array == 1) & (predictions_array == 0)))
+
+        precision = true_positive / max(true_positive + false_positive, 1)
+        recall = true_positive / max(true_positive + false_negative, 1)
+        f1 = 2 * precision * recall / max(precision + recall, 1e-12)
+
+        if to_stdout:
+            print(f"{'='*50}")
+            print(self.display_name)
+            print(f"{'='*50}")
+            print(
+                f"Precision: {precision:.3f} ({precision*100:.0f}% of detections were real bubbles)"
+            )
+            print(f"Recall:    {recall:.3f} ({recall*100:.0f}% of actual bubbles were detected)")
+            print(f"F1-Score:  {f1:.3f}")
+            print(f"{'='*50}")
+
+        return precision, recall, f1
+
+    def detect(self, data, intervals):
+        """Detect if the sample contains a bubble."""
+        data = self._ensure_2d(data)
+        predictions = []
+        self.model.eval()
+        for interval in intervals:
+            sample = self._prepare_sample_tensor(get_sample(data, interval))
+            sample = sample.unsqueeze(0).to(self.device)
+
+            with torch.no_grad():
+                logit = self.model(sample)
+                prediction = torch.sigmoid(logit).item() >= 0.5
+
+            predictions.append(bool(prediction))
+        return predictions
+
+    def save(self, path: str):
+        """Save the trained model to a file."""
+        print("Saving CNN model to", path)
+        joblib.dump(self, path)
+        print("CNN model saved.")

@@ -3,7 +3,7 @@ import numpy as np
 from sklearn import svm
 from sklearn.ensemble import RandomForestClassifier
 
-from sample import get_sample
+from src.sample import get_sample
 
 
 class RandomForest:

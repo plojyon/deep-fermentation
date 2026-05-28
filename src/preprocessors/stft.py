@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from load import BubbleAnnotation
+from src.load import BubbleAnnotation
 
 
 def hann_window(length: int) -> np.ndarray:
