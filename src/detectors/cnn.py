@@ -4,37 +4,40 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.sample import get_sample
 
-
-class CNNClassifier1D(nn.Module):
+class CNNClassifier2D(nn.Module):
     """Inner CNN model."""
 
     def __init__(
         self,
         conv_channels: tuple[int, ...],
-        kernel_size: int,
+        kernel_size: int | tuple[int, int],
+        pool_kernel: tuple[int, int],
         hidden_dim: int,
         dropout: float,
     ):
         super().__init__()
 
-        padding = kernel_size // 2
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+
+        padding = tuple(size // 2 for size in kernel_size)
         layers: list[nn.Module] = []
         in_channels = 1
         for out_channels in conv_channels:
             layers.extend(
                 [
-                    nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
-                    nn.BatchNorm1d(out_channels),
+                    nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
+                    nn.BatchNorm2d(out_channels),
                     nn.ReLU(),
+                    nn.MaxPool2d(kernel_size=pool_kernel, stride=pool_kernel),
                     nn.Dropout(dropout),
                 ]
             )
             in_channels = out_channels
 
         self.features = nn.Sequential(*layers)
-        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.pool = nn.AdaptiveAvgPool2d(1)
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Linear(in_channels, hidden_dim),
@@ -53,12 +56,13 @@ class CNNClassifier1D(nn.Module):
 class CNNDetector:
     """A bubble detector using a deep CNN."""
 
-    display_name: str = "CNN"
+    display_name: str = "CNN (2D)"
 
     def __init__(
         self,
-        conv_channels: tuple[int, ...] = (32, 64),
-        kernel_size: int = 7,
+        conv_channels: tuple[int, ...] = (16, 32, 64),
+        kernel_size: int | tuple[int, int] = 3,
+        pool_kernel: tuple[int, int] = (1, 2),
         hidden_dim: int = 64,
         dropout: float = 0.25,
         learning_rate: float = 1e-3,
@@ -73,6 +77,7 @@ class CNNDetector:
     ):
         self.conv_channels = tuple(conv_channels)
         self.kernel_size = kernel_size
+        self.pool_kernel = pool_kernel
         self.hidden_dim = hidden_dim
         self.dropout = dropout
         self.learning_rate = learning_rate
@@ -85,9 +90,10 @@ class CNNDetector:
         self.balance_classes = balance_classes
         self.verbose = verbose
 
-        self.model = CNNClassifier1D(
+        self.model = CNNClassifier2D(
             conv_channels=self.conv_channels,
             kernel_size=self.kernel_size,
+            pool_kernel=self.pool_kernel,
             hidden_dim=self.hidden_dim,
             dropout=self.dropout,
         ).to(self.device)
@@ -101,8 +107,23 @@ class CNNDetector:
             data = np.expand_dims(data, axis=0)
         return data
 
+    def _extract_sample(self, data, interval):
+        data = self._ensure_2d(data)
+        s, e = interval.start, interval.end
+
+        if e - s == 0:
+            if e >= data.shape[1]:
+                s = max(0, s - 1)
+            else:
+                e += 1
+
+        sample = data[:, s:e]
+        if sample.shape[1] == 0:
+            raise ValueError("Interval produced an empty sample")
+        return np.asarray(sample, dtype=np.float32)
+
     def _prepare_training_data(self, samples: list[np.ndarray]) -> np.ndarray:
-        return np.asarray([np.asarray(sample, dtype=np.float32).reshape(-1) for sample in samples])
+        return np.stack([np.asarray(sample, dtype=np.float32) for sample in samples], axis=0)
 
     def _normalize(self, samples: np.ndarray) -> np.ndarray:
         if not self.normalize:
@@ -114,7 +135,7 @@ class CNNDetector:
         return (samples - self.mean_) / self.std_
 
     def _prepare_sample_tensor(self, sample: np.ndarray) -> torch.Tensor:
-        sample = np.asarray(sample, dtype=np.float32).reshape(-1)
+        sample = np.asarray(sample, dtype=np.float32)
         if self.normalize:
             if self.mean_ is None or self.std_ is None:
                 raise RuntimeError("CNNDetector normalization parameters are not initialized")
@@ -133,9 +154,9 @@ class CNNDetector:
 
         print(f"Processing sample of shape {data.shape} for CNN training.")
         for interval in positive_intervals:
-            pos.append(get_sample(data, interval))
+            pos.append(self._extract_sample(data, interval))
         for interval in negative_intervals:
-            neg.append(get_sample(data, interval))
+            neg.append(self._extract_sample(data, interval))
 
         print(f"Collected {len(pos)} positive and {len(neg)} negative samples for CNN training.")
         X_train = self._prepare_training_data(pos + neg)
@@ -167,7 +188,7 @@ class CNNDetector:
         )
 
         pos_weight = None
-        if self.balance_classes and len(pos) > 0:
+        if self.balance_classes and len(pos) > 0 and len(neg) > 0:
             pos_weight_value = len(neg) / max(len(pos), 1)
             pos_weight = torch.tensor([pos_weight_value], device=self.device)
 
@@ -239,7 +260,7 @@ class CNNDetector:
         predictions = []
         self.model.eval()
         for interval in intervals:
-            sample = self._prepare_sample_tensor(get_sample(data, interval))
+            sample = self._prepare_sample_tensor(self._extract_sample(data, interval))
             sample = sample.unsqueeze(0).to(self.device)
 
             with torch.no_grad():
