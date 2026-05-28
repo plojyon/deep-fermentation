@@ -3,6 +3,7 @@ from sklearn.metrics import precision_recall_fscore_support
 from src.detectors.constant import ConstantDetector
 from src.detectors.random import RandomDetector
 from src.preprocessors.identity import IdentityPreprocessor
+from src.preprocessors.stft import StftPreprocessor
 
 
 class BubbleDetector:
@@ -14,6 +15,7 @@ class BubbleDetector:
     }
     preprocessors = {
         "identity": IdentityPreprocessor,
+        "stft": StftPreprocessor,
     }
 
     def __init__(
