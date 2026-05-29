@@ -299,7 +299,7 @@ class Main:
     def eval_pretrained(self, model: str, file: Optional[str] = None):
         """Evaluate a pretrained SVM-STFT model."""
         detector = BubbleDetector("svm", "stft")
-        detector.model.model = joblib.load(model)
+        detector.model = joblib.load(model)
         if file is None:
             data, train_positive, train_negative, test_positive, test_negative = prepare_data()
             detector.evaluate(
