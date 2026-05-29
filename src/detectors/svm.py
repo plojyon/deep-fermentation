@@ -30,9 +30,7 @@ class SVMDetector:
             neg.append(get_sample(data, interval))
             # print(f"neg shape: {data[:, interval.start].shape}")
 
-        print(
-            f"Collected {len(pos)} positive and {len(neg)} negative samples for SVM training."
-        )
+        print(f"Collected {len(pos)} positive and {len(neg)} negative samples for SVM training.")
         X_train = np.array(pos + neg)
         y_train = np.array([1] * len(pos) + [0] * len(neg))
         print(
@@ -46,22 +44,12 @@ class SVMDetector:
         self.model.fit(X_train, y_train)
         print("SVM training completed.")
 
-        # quantize parameters to float16
-        sv = self.model.support_vectors_
-        sv[:] = sv.astype(np.float16).astype(np.float64)
-        dc = self.model.dual_coef_
-        dc[:] = dc.astype(np.float16).astype(np.float64)
-        ic = self.model.intercept_
-        ic[:] = ic.astype(np.float16).astype(np.float64)
-
     def detect(self, data, intervals):
         """Detect if the sample contains a bubble."""
         # prediction = self.model.predict([sample[interval.start:interval.end]])[0]
         predictions = []
         for interval in intervals:
             prediction = self.model.predict([get_sample(data, interval)])
-            if prediction[0] < 0 or True:
-                print(prediction)
             predictions.append(bool(prediction[0]))
         return predictions
 

@@ -73,7 +73,6 @@ class CNNDetector:
         seed: int = 42,
         normalize: bool = True,
         balance_classes: bool = True,
-        verbose: bool = True,
     ):
         self.conv_channels = tuple(conv_channels)
         self.kernel_size = kernel_size
@@ -88,7 +87,6 @@ class CNNDetector:
         self.seed = seed
         self.normalize = normalize
         self.balance_classes = balance_classes
-        self.verbose = verbose
 
         self.model = CNNClassifier2D(
             conv_channels=self.conv_channels,
@@ -215,12 +213,11 @@ class CNNDetector:
                 correct += int((predictions == batch_targets).sum().item())
                 total += batch_inputs.size(0)
 
-            if self.verbose:
-                print(
-                    f"Epoch {epoch + 1}/{self.epochs}: "
-                    f"loss={epoch_loss / max(total, 1):.4f}, "
-                    f"accuracy={correct / max(total, 1):.3f}"
-                )
+            print(
+                f"Epoch {epoch + 1}/{self.epochs}: "
+                f"loss={epoch_loss / max(total, 1):.4f}, "
+                f"accuracy={correct / max(total, 1):.3f}"
+            )
 
         print("CNN training completed.")
 
