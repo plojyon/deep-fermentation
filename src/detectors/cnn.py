@@ -1,8 +1,9 @@
-import joblib
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+
+from src.sample import get_sample
 
 
 class CNNClassifier2D(nn.Module):
@@ -99,27 +100,6 @@ class CNNDetector:
         self.mean_: float | None = None
         self.std_: float | None = None
 
-    def _ensure_2d(self, data):
-        data = np.asarray(data, dtype=np.float32)
-        if data.ndim == 1:
-            data = np.expand_dims(data, axis=0)
-        return data
-
-    def _extract_sample(self, data, interval):
-        data = self._ensure_2d(data)
-        s, e = interval.start, interval.end
-
-        if e - s == 0:
-            if e >= data.shape[1]:
-                s = max(0, s - 1)
-            else:
-                e += 1
-
-        sample = data[:, s:e]
-        if sample.shape[1] == 0:
-            raise ValueError("Interval produced an empty sample")
-        return np.asarray(sample, dtype=np.float32)
-
     def _prepare_training_data(self, samples: list[np.ndarray]) -> np.ndarray:
         return np.stack([np.asarray(sample, dtype=np.float32) for sample in samples], axis=0)
 
@@ -145,16 +125,14 @@ class CNNDetector:
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
 
-        data = self._ensure_2d(data)
-
         pos = []
         neg = []
 
         print(f"Processing sample of shape {data.shape} for CNN training.")
         for interval in positive_intervals:
-            pos.append(self._extract_sample(data, interval))
+            pos.append(get_sample(data, interval, dimensions=2))
         for interval in negative_intervals:
-            neg.append(self._extract_sample(data, interval))
+            neg.append(get_sample(data, interval, dimensions=2))
 
         print(f"Collected {len(pos)} positive and {len(neg)} negative samples for CNN training.")
         X_train = self._prepare_training_data(pos + neg)
@@ -221,44 +199,13 @@ class CNNDetector:
 
         print("CNN training completed.")
 
-    def evaluate(self, data, positive_intervals, negative_intervals, to_stdout=True):
-        """Evaluate the detector on a labeled interval set."""
-        labels = [1] * len(positive_intervals) + [0] * len(negative_intervals)
-        intervals = positive_intervals + negative_intervals
-        predictions = self.detect(data, intervals)
-
-        labels_array = np.array(labels)
-        predictions_array = np.array(predictions)
-
-        true_positive = int(np.sum((labels_array == 1) & (predictions_array == 1)))
-        false_positive = int(np.sum((labels_array == 0) & (predictions_array == 1)))
-        false_negative = int(np.sum((labels_array == 1) & (predictions_array == 0)))
-
-        precision = true_positive / max(true_positive + false_positive, 1)
-        recall = true_positive / max(true_positive + false_negative, 1)
-        f1 = 2 * precision * recall / max(precision + recall, 1e-12)
-
-        if to_stdout:
-            print(f"{'='*50}")
-            print(self.display_name)
-            print(f"{'='*50}")
-            print(
-                f"Precision: {precision:.3f} ({precision*100:.0f}% of detections were real bubbles)"
-            )
-            print(f"Recall:    {recall:.3f} ({recall*100:.0f}% of actual bubbles were detected)")
-            print(f"F1-Score:  {f1:.3f}")
-            print(f"{'='*50}")
-
-        return precision, recall, f1
-
     def detect(self, data, intervals):
         """Detect if the sample contains a bubble."""
-        data = self._ensure_2d(data)
         predictions = []
         self.model.eval()
         expected_shape = None
         for interval in intervals:
-            sample_array = self._extract_sample(data, interval)
+            sample_array = get_sample(data, interval, dimensions=2)
             if expected_shape is None:
                 expected_shape = sample_array.shape
             elif sample_array.shape != expected_shape:

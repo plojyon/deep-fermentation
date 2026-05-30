@@ -6,7 +6,7 @@ import numpy as np
 from src.load import BubbleAnnotation
 
 
-def get_sample(data: np.ndarray, interval: BubbleAnnotation):
+def get_sample(data: np.ndarray, interval: BubbleAnnotation, dimensions: int):
     """Extract sample from data given an interval."""
     s, e = interval.start, interval.end
 
@@ -18,11 +18,16 @@ def get_sample(data: np.ndarray, interval: BubbleAnnotation):
             e += 1
 
     sample = data[:, s:e]
-    if sample.shape[0] <= 100:
-        sample = sample.flatten()
-    else:
-        sample = sample.mean(axis=1)
-        # sample = sample[:, 0]
+
+    if dimensions == 1:
+        if sample.shape[0] <= 100:
+            sample = sample.flatten()
+        else:
+            sample = sample.mean(axis=1)
+            # sample = sample[:, 0]
+    elif dimensions == 2:
+        if len(sample.shape) == 1:
+            sample = np.expand_dims(sample, axis=0)
     return sample
 
 
