@@ -10,6 +10,7 @@ from fire import Fire
 
 from tqdm import tqdm
 import json
+import torch
 from src.detect import BubbleDetector
 from src.load import BubbleAnnotation, load_annotations, load_wav
 from src.plot import plot_annotations, plot_wav
@@ -21,6 +22,9 @@ TRAIN_RATIO = 0.7
 MERGE_THRESHOLD = 10  # in samples
 
 annotations = load_annotations("data/annotations.json")
+
+torch.manual_seed(42)
+np.random.seed(42)
 
 
 def prepare_data(file: Optional[str] = None):

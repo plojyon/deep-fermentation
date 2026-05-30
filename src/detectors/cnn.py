@@ -12,23 +12,25 @@ class CNNClassifier2D(nn.Module):
     def __init__(
         self,
         conv_channels: tuple[int, ...],
-        kernel_size: int | tuple[int, int],
+        kernel_size: int,
         pool_kernel: tuple[int, int],
         hidden_dim: int,
         dropout: float,
     ):
         super().__init__()
 
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size, kernel_size)
-
-        padding = tuple(size // 2 for size in kernel_size)
+        padding = kernel_size // 2
         layers: list[nn.Module] = []
         in_channels = 1
         for out_channels in conv_channels:
             layers.extend(
                 [
-                    nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=(kernel_size, kernel_size),
+                        padding=(padding, padding),
+                    ),
                     nn.BatchNorm2d(out_channels),
                     nn.ReLU(),
                     nn.MaxPool2d(kernel_size=pool_kernel, stride=pool_kernel),
@@ -62,7 +64,7 @@ class CNNDetector:
     def __init__(
         self,
         conv_channels: tuple[int, ...] = (16, 32, 64),
-        kernel_size: int | tuple[int, int] = 3,
+        kernel_size: int = 3,
         pool_kernel: tuple[int, int] = (1, 2),
         hidden_dim: int = 64,
         dropout: float = 0.25,
@@ -71,13 +73,12 @@ class CNNDetector:
         batch_size: int = 32,
         epochs: int = 20,
         device: str | None = None,
-        seed: int = 42,
         normalize: bool = True,
         balance_classes: bool = True,
     ):
         self.conv_channels = tuple(conv_channels)
         self.kernel_size = kernel_size
-        self.pool_kernel = pool_kernel
+        self.pool_kernel = tuple(pool_kernel)
         self.hidden_dim = hidden_dim
         self.dropout = dropout
         self.learning_rate = learning_rate
@@ -85,7 +86,6 @@ class CNNDetector:
         self.batch_size = batch_size
         self.epochs = epochs
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-        self.seed = seed
         self.normalize = normalize
         self.balance_classes = balance_classes
 
@@ -97,34 +97,13 @@ class CNNDetector:
             dropout=self.dropout,
         ).to(self.device)
 
-        self.mean_: float | None = None
-        self.std_: float | None = None
-
-    def _prepare_training_data(self, samples: list[np.ndarray]) -> np.ndarray:
-        return np.stack([np.asarray(sample, dtype=np.float32) for sample in samples], axis=0)
-
     def _normalize(self, samples: np.ndarray) -> np.ndarray:
-        if not self.normalize:
-            return samples
-
-        if self.mean_ is None or self.std_ is None:
-            raise RuntimeError("CNNDetector normalization parameters are not initialized")
-
-        return (samples - self.mean_) / self.std_
-
-    def _prepare_sample_tensor(self, sample: np.ndarray) -> torch.Tensor:
-        sample = np.asarray(sample, dtype=np.float32)
         if self.normalize:
-            if self.mean_ is None or self.std_ is None:
-                raise RuntimeError("CNNDetector normalization parameters are not initialized")
-            sample = (sample - self.mean_) / self.std_
-        return torch.from_numpy(sample).unsqueeze(0)
+            return (samples - self._mean) / self._std
+        return samples
 
     def train(self, data, positive_intervals, negative_intervals):
         """Train the classifier."""
-        torch.manual_seed(self.seed)
-        np.random.seed(self.seed)
-
         pos = []
         neg = []
 
@@ -135,24 +114,12 @@ class CNNDetector:
             neg.append(get_sample(data, interval, dimensions=2))
 
         print(f"Collected {len(pos)} positive and {len(neg)} negative samples for CNN training.")
-        X_train = self._prepare_training_data(pos + neg)
+        X_train = np.stack([np.asarray(sample, dtype=np.float32) for sample in pos + neg], axis=0)
         y_train = np.array([1] * len(pos) + [0] * len(neg))
 
-        if self.normalize:
-            self.mean_ = float(X_train.mean())
-            self.std_ = float(X_train.std())
-            if self.std_ == 0:
-                self.std_ = 1.0
-            X_train = self._normalize(X_train)
-
-        print(
-            "Training CNN. Data shape:",
-            X_train.shape,
-            "Labels shape:",
-            y_train.shape,
-            "Sanity check: 2 =",
-            X_train.ndim,
-        )
+        self._mean = float(X_train.mean())
+        self._std = float(X_train.std())
+        X_train = self._normalize(X_train)
 
         inputs = torch.from_numpy(X_train).unsqueeze(1)
         targets = torch.from_numpy(y_train.astype(np.float32))
@@ -213,8 +180,9 @@ class CNNDetector:
                 predictions.append(False)
                 continue
 
-            sample = self._prepare_sample_tensor(sample_array)
-            sample = sample.unsqueeze(0).to(self.device)
+            sample = np.asarray(sample_array, dtype=np.float32)
+            sample = self._normalize(sample)
+            sample = torch.from_numpy(sample).unsqueeze(0).unsqueeze(0).to(self.device)
 
             with torch.no_grad():
                 logit = self.model(sample)

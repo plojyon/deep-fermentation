@@ -33,14 +33,7 @@ class SVMDetector:
         print(f"Collected {len(pos)} positive and {len(neg)} negative samples for SVM training.")
         X_train = np.array(pos + neg)
         y_train = np.array([1] * len(pos) + [0] * len(neg))
-        print(
-            "Training SVM. Data shape:",
-            X_train.shape,
-            "Labels shape:",
-            y_train.shape,
-            "Sanity check: 2 =",
-            X_train.ndim,
-        )
+
         self.model.fit(X_train, y_train)
         print("SVM training completed.")
 
