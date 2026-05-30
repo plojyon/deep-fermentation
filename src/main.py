@@ -107,7 +107,7 @@ def visualize_detections(detector: BubbleDetector, data, annotations, file_name)
     t = np.arange(len(data)) / SAMPLE_RATE
 
     # Annotations (ground truth)
-    plot_wav(ax_gt, t, data, title=f"{file_name} annotations (ground truth)")
+    plot_wav(ax_gt, t, data, title=f"Annotations (ground truth)")
     base_name = os.path.basename(file_name)
     if base_name in annotations:
         plot_annotations(
@@ -120,7 +120,7 @@ def visualize_detections(detector: BubbleDetector, data, annotations, file_name)
     ax_gt.legend()
 
     # Detections
-    plot_wav(ax_det, t, data, title=f"{file_name} detections")
+    plot_wav(ax_det, t, data, title=f"Detections ({detector.name})")
 
     window = int(WINDOW_SIZE * SAMPLE_RATE)
     intervals = [
@@ -298,8 +298,7 @@ class Main:
 
     def eval_pretrained(self, model: str, file: Optional[str] = None):
         """Evaluate a pretrained SVM-STFT model."""
-        detector = BubbleDetector("svm", "stft")
-        detector.model = joblib.load(model)
+        detector = joblib.load(model)
         if file is None:
             data, train_positive, train_negative, test_positive, test_negative = prepare_data()
             detector.evaluate(

@@ -275,9 +275,3 @@ class CNNDetector:
 
             predictions.append(bool(prediction))
         return predictions
-
-    def save(self, path: str):
-        """Save the trained model to a file."""
-        print("Saving CNN model to", path)
-        joblib.dump(self, path)
-        print("CNN model saved.")
