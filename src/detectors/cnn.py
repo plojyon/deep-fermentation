@@ -256,8 +256,17 @@ class CNNDetector:
         data = self._ensure_2d(data)
         predictions = []
         self.model.eval()
+        expected_shape = None
         for interval in intervals:
-            sample = self._prepare_sample_tensor(self._extract_sample(data, interval))
+            sample_array = self._extract_sample(data, interval)
+            if expected_shape is None:
+                expected_shape = sample_array.shape
+            elif sample_array.shape != expected_shape:
+                # Edge case: last interval may be shorter and will break the convolution
+                predictions.append(False)
+                continue
+
+            sample = self._prepare_sample_tensor(sample_array)
             sample = sample.unsqueeze(0).to(self.device)
 
             with torch.no_grad():

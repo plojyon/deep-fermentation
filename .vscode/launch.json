@@ -5,11 +5,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            // uv run src/main.py train_detector svm
-            "name": "Debug mehurcki",
+            // uv run -m src.main train_detector svm
+            "name": "Debug SVM",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/main.py",
+            "module": "src.main",
             "args": [
                 "train_detector",
                 "svm"
@@ -17,10 +17,18 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python Debugger: Current File",
+            "name": "Debug CNN",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "module": "src.main",
+            "args": [
+                "train_detector",
+                "cnn",
+                "--preprocessor",
+                "stft",
+                "--file",
+                "output_2025-10-03_21:43:01.wav"
+            ],
             "console": "integratedTerminal"
         }
     ]
