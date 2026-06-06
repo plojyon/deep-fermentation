@@ -44,10 +44,5 @@ Možni zvočni posnetki: ime `.wav` datoteke v mapi `data/` (privzeto: vse).
 # Primeri
 
 ## Anotacije podatkov
-![Ena sama anotacija mehurcka](media/single-annotation.png)
-![Srednje tezek primer z vmesnim smrcanjem](media/snoring.png)
-![Tezaven primer s hrupom](media/difficult-case.png)
-
-## Detekcije
-![Detekcije](media/detections.png)
-![Detekcije na tezavnem primeru](media/detections-difficult.png)
+![Posnetek v tišini](media/Figure_2.png)
+![Tezaven primer s hrupom](media/Figure_1.png)
