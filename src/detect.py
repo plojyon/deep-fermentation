@@ -4,6 +4,7 @@ import joblib
 from src.detectors.constant import ConstantDetector
 from src.detectors.random import RandomDetector
 from src.detectors.random_forest import RandomForest
+from src.detectors.lstm import LSTMDetector
 from src.detectors.svm import SVMDetector
 from src.detectors.cnn import CNNDetector
 from src.preprocessors.identity import IdentityPreprocessor
@@ -18,6 +19,7 @@ class BubbleDetector:
         "random": RandomDetector,
         "svm": SVMDetector,
         "random_forest": RandomForest,
+        "lstm": LSTMDetector,
         "cnn": CNNDetector,
     }
     preprocessors = {

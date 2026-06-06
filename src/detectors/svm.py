@@ -22,12 +22,12 @@ class SVMDetector:
         for interval in positive_intervals:
             # pos.append(data[:, interval.start:interval.end])
             # print(f"pos shape: {data[:, interval.start:interval.end].shape}, {interval.start}-{interval.end} = {interval.end-interval.start}")
-            pos.append(get_sample(data, interval))
+            pos.append(get_sample(data, interval, dimensions=1))
             # print(f"pos shape: {data[:, interval.start].shape}")
         for interval in negative_intervals:
             # neg.append(data[:, interval.start:interval.end])
             # print(f"neg shape: {data[:, interval.start:interval.end].shape}, {interval.start}-{interval.end} = {interval.end-interval.start}")
-            neg.append(get_sample(data, interval))
+            neg.append(get_sample(data, interval, dimensions=1))
             # print(f"neg shape: {data[:, interval.start].shape}")
 
         print(f"Collected {len(pos)} positive and {len(neg)} negative samples for SVM training.")
@@ -42,6 +42,6 @@ class SVMDetector:
         # prediction = self.model.predict([sample[interval.start:interval.end]])[0]
         predictions = []
         for interval in intervals:
-            prediction = self.model.predict([get_sample(data, interval)])
+            prediction = self.model.predict([get_sample(data, interval, dimensions=1)])
             predictions.append(bool(prediction[0]))
         return predictions

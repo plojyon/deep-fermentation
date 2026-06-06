@@ -17,17 +17,15 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Debug CNN",
+            "name": "Debug LSTM",
             "type": "debugpy",
             "request": "launch",
             "module": "src.main",
             "args": [
                 "train_detector",
-                "cnn",
+                "lstm",
                 "--preprocessor",
-                "stft",
-                "--file",
-                "output_2025-10-03_21:43:01.wav"
+                "identity"
             ],
             "console": "integratedTerminal"
         }

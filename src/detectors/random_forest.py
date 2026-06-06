@@ -21,9 +21,9 @@ class RandomForest:
 
         print(f"Processing sample of shape {data.shape} for SVM training.")
         for interval in positive_intervals:
-            pos.append(get_sample(data, interval))
+            pos.append(get_sample(data, interval, dimensions=1))
         for interval in negative_intervals:
-            neg.append(get_sample(data, interval))
+            neg.append(get_sample(data, interval, dimensions=1))
 
         X_train = np.array(pos + neg)
         y_train = np.array([1] * len(pos) + [0] * len(neg))
@@ -33,6 +33,6 @@ class RandomForest:
         """Detect if the sample contains a bubble."""
         predictions = []
         for interval in intervals:
-            prediction = self.model.predict([get_sample(data, interval)])
+            prediction = self.model.predict([get_sample(data, interval, dimensions=1)])
             predictions.append(bool(prediction[0]))
         return predictions
