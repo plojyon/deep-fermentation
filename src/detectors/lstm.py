@@ -8,7 +8,7 @@ from src.sample import get_sample
 
 
 class _SequenceDataset(Dataset):
-    """Dataset for variable-length 1D sequences."""
+    """Dataset for variable-length 2D sequences."""
 
     def __init__(self, samples: list[np.ndarray], labels: list[int]):
         self.samples = samples
@@ -18,18 +18,19 @@ class _SequenceDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, index):
-        sample = np.asarray(self.samples[index], dtype=np.float32).reshape(-1)
+        sample = np.asarray(self.samples[index], dtype=np.float32)
         if sample.size == 0:
-            sample = np.zeros(1, dtype=np.float32)
+            sample = np.zeros((1, 1), dtype=np.float32)
         label = np.float32(self.labels[index])
         return torch.from_numpy(sample), torch.tensor(label, dtype=torch.float32)
 
 
 def _collate_sequences(batch):
-    """Pad a batch of 1D sequences to a common length."""
+    """Pad a batch of time-major sequences to a common length."""
     samples, labels = zip(*batch)
-    lengths = torch.tensor([sample.numel() for sample in samples], dtype=torch.long)
-    padded = pad_sequence([sample.unsqueeze(-1) for sample in samples], batch_first=True)
+    sequences = [sample.transpose(0, 1) for sample in samples]
+    lengths = torch.tensor([sequence.size(0) for sequence in sequences], dtype=torch.long)
+    padded = pad_sequence(sequences, batch_first=True)
     labels = torch.stack(labels)
     return padded, labels, lengths
 
@@ -37,11 +38,11 @@ def _collate_sequences(batch):
 class LSTMClassifier(nn.Module):
     """Inner LSTM model."""
 
-    def __init__(self, hidden_size: int, num_layers: int, dropout: float):
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int, dropout: float):
         super().__init__()
         lstm_dropout = dropout if num_layers > 1 else 0.0
         self.lstm = nn.LSTM(
-            input_size=1,
+            input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
@@ -69,7 +70,7 @@ class LSTMDetector:
         hidden_size: int = 64,
         num_layers: int = 2,
         dropout: float = 0.25,
-        max_sequence_length: int = 256,
+        max_sequence_length: int = 10240000,
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-4,
         batch_size: int = 32,
@@ -89,8 +90,13 @@ class LSTMDetector:
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.normalize = normalize
         self.balance_classes = balance_classes
+        self.input_size: int | None = None
+        self.model: LSTMClassifier | None = None
 
+    def _build_model(self, input_size: int):
+        self.input_size = input_size
         self.model = LSTMClassifier(
+            input_size=input_size,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             dropout=self.dropout,
@@ -102,13 +108,22 @@ class LSTMDetector:
         return samples
 
     def _prepare_sample(self, sample: np.ndarray) -> np.ndarray:
-        sample = np.asarray(sample, dtype=np.float32).reshape(-1)
+        sample = np.asarray(sample, dtype=np.float32)
         if sample.size == 0:
-            return np.zeros(1, dtype=np.float32)
-        if sample.size > self.max_sequence_length:
-            x_old = np.linspace(0.0, 1.0, num=sample.size, endpoint=True)
+            return np.zeros((1, 1), dtype=np.float32)
+
+        if sample.ndim == 1:
+            sample = sample[np.newaxis, :]
+        elif sample.ndim > 2:
+            sample = sample.reshape(sample.shape[0], -1)
+
+        if sample.shape[-1] > self.max_sequence_length:
+            x_old = np.linspace(0.0, 1.0, num=sample.shape[-1], endpoint=True)
             x_new = np.linspace(0.0, 1.0, num=self.max_sequence_length, endpoint=True)
-            sample = np.interp(x_new, x_old, sample).astype(np.float32)
+            sample = np.stack(
+                [np.interp(x_new, x_old, row).astype(np.float32) for row in sample],
+                axis=0,
+            )
         return sample
 
     def train(self, data, positive_intervals, negative_intervals):
@@ -118,16 +133,22 @@ class LSTMDetector:
 
         print(f"Processing sample of shape {data.shape} for LSTM training.")
         for interval in positive_intervals:
-            pos.append(self._prepare_sample(get_sample(data, interval, dimensions=1)))
+            pos.append(self._prepare_sample(get_sample(data, interval, dimensions=2)))
         for interval in negative_intervals:
-            neg.append(self._prepare_sample(get_sample(data, interval, dimensions=1)))
+            neg.append(self._prepare_sample(get_sample(data, interval, dimensions=2)))
 
         print(f"Collected {len(pos)} positive and {len(neg)} negative samples for LSTM training.")
         X_train = pos + neg
         y_train = [1] * len(pos) + [0] * len(neg)
 
-        X_train = [self._prepare_sample(sample) for sample in X_train]
-        concatenated = np.concatenate([sample.astype(np.float32) for sample in X_train])
+        if not X_train:
+            raise ValueError("No training samples were collected for the LSTM detector.")
+
+        feature_size = X_train[0].shape[0]
+        if self.model is None or self.input_size != feature_size:
+            self._build_model(feature_size)
+
+        concatenated = np.concatenate([sample.astype(np.float32).reshape(-1) for sample in X_train])
         self._mean = float(concatenated.mean())
         self._std = float(concatenated.std())
 
@@ -148,6 +169,7 @@ class LSTMDetector:
 
         criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
+        assert self.model is not None
         self.model.train()
         for epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -181,11 +203,14 @@ class LSTMDetector:
     def detect(self, data, intervals):
         """Detect if the sample contains a bubble."""
         predictions = []
+        if self.model is None:
+            raise ValueError("LSTM detector has not been trained yet.")
+
         self.model.eval()
         for interval in intervals:
-            sample = self._prepare_sample(get_sample(data, interval, dimensions=1))
+            sample = self._prepare_sample(get_sample(data, interval, dimensions=2))
             sample = self._normalize(sample)
-            sample_tensor = torch.from_numpy(sample).unsqueeze(0).unsqueeze(-1).to(self.device)
+            sample_tensor = torch.from_numpy(sample).transpose(0, 1).unsqueeze(0).to(self.device)
             lengths = torch.tensor([sample_tensor.size(1)], device=self.device)
 
             with torch.no_grad():
