@@ -46,3 +46,6 @@ Možni zvočni posnetki: ime `.wav` datoteke v mapi `data/` (privzeto: vse).
 ## Anotacije podatkov
 ![Posnetek v tišini](media/Figure_2.png)
 ![Tezaven primer s hrupom](media/Figure_1.png)
+
+## Detekcije
+![Detekcije CNN](media/Results.png)
